@@ -109,9 +109,9 @@ makeStatic({ x: -400, y: -200, radius: 20, color: 'green' })
 // ship
 const wander = (body: Body): void => {
   if (uniform(0, 1) < state.dt) {
-    // const direction = getRandDir()
-    // const force = Vector.mult(direction, 0.01 * state.dt)
-    // Body.applyForce(body, body.position, force)
+    const direction = getRandDir()
+    const force = Vector.mult(direction, 0.001 * state.dt)
+    Body.applyForce(body, body.position, force)
   }
 }
 const ship = makeDynamic({ x: -20, y: 0, width: 10, height: 10, color: 'blue', label: 'ship', action: wander })
