@@ -1,0 +1,27 @@
+{
+  "name": "gravity",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielgstephenson/gravity.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/danielgstephenson/gravity/issues"
+  },
+  "homepage": "https://github.com/danielgstephenson/gravity#readme",
+  "devDependencies": {
+    "@types/matter-js": "^0.17.7",
+    "ts-standard": "^11.0.0"
+  },
+  "dependencies": {
+    "matter-js": "^0.18.0"
+  }
+}
