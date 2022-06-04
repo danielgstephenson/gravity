@@ -34,10 +34,20 @@ interface Actor {
   action?: Action
 }
 
+interface Fighter extends Actor {
+  ship?: Ship
+}
+
+interface Ship extends Actor {
+  fighter?: Actor
+}
+
 const composites: Body[] = []
 const dynamics: Body[] = []
 const statics: Body[] = []
-const actors: Actor[] = []
+const fighters: Record<string, Fighter> = {}
+const ships: Record<string, Ship> = {}
+const actors: Record<string, Actor> = {}
 
 function makeActor ({ body, action, color = 'grey', label }: {
   body: Body
@@ -48,8 +58,8 @@ function makeActor ({ body, action, color = 'grey', label }: {
   body.render.fillStyle = color
   if (label != null) body.label = label
   composites.push(body)
-  const actor = { body, action }
-  actors.push(actor)
+  const actor: Actor = { body, action }
+  actors[body.id] = actor
   return actor
 }
 
@@ -67,6 +77,48 @@ function makeStatic ({ x, y, radius, color = 'red', label, action }: {
   return makeActor({ body, action, color, label })
 }
 
+function makeFighter (props: {
+  x: number
+  y: number
+  width: number
+  height: number
+  color: string
+  action?: Action
+  label?: string
+}): Actor {
+  const chase = (body: Body): void => {
+    const dist = (a: Actor): number => Vector.magnitude(Vector.sub(a.body.position, body.position))
+    const ship = Object.values(ships).reduce((a, b) => dist(a) < dist(b) ? a : b)
+    const direction = Vector.normalise(Vector.sub(ship.body.position, body.position))
+    const force = Vector.mult(direction, body.mass * 0.01 * state.dt)
+    Body.applyForce(body, body.position, force)
+  }
+  const actor = makeDynamic({ ...props, action: chase })
+  fighters[actor.body.id] = actor
+  return actor
+}
+
+function makeShip (props: {
+  x: number
+  y: number
+  width: number
+  height: number
+  color: string
+  action?: Action
+  label?: string
+}): Ship {
+  const wander = (body: Body): void => {
+    if (uniform(0, 1) < state.dt) {
+      const direction = getRandDir()
+      const force = Vector.mult(direction, 0.001)
+      Body.applyForce(body, body.position, force)
+    }
+  }
+  const actor = makeDynamic({ ...props, action: wander })
+  ships[actor.body.id] = actor
+  return actor
+}
+
 function makeDynamic ({ x, y, width, height, color = 'blue', label, action }: {
   x: number
   y: number
@@ -79,6 +131,9 @@ function makeDynamic ({ x, y, width, height, color = 'blue', label, action }: {
   const body = Bodies.rectangle(x, y, width, height)
   body.isStatic = false
   body.frictionAir = 0
+  const power = 0.01
+  const initialVelolcity = { x: uniform(power, -power), y: uniform(power, -power) }
+  Body.setVelocity(body, initialVelolcity)
   statics.push(body)
   return makeActor({ body, action, color, label })
 }
@@ -101,42 +156,27 @@ function makeWall ({ x, y, width, height, color = 'purple', action }: {
 // create bodies
 
 // sun
-makeStatic({ x: 400, y: 400, radius: 50, color: 'yellow' })
+makeStatic({ x: 400, y: 300, radius: 50, color: 'yellow' })
 
 // planet
 makeStatic({ x: -400, y: -200, radius: 20, color: 'green' })
 
 // ship
-const wander = (body: Body): void => {
-  if (uniform(0, 1) < state.dt) {
-    const direction = getRandDir()
-    const force = Vector.mult(direction, 0.001 * state.dt)
-    Body.applyForce(body, body.position, force)
-  }
-}
-const ship = makeDynamic({ x: -20, y: 0, width: 10, height: 10, color: 'blue', label: 'ship', action: wander })
-const power = 0
-const x = uniform(power, -power)
-const y = uniform(power, -power)
-const initialVelolcity = { x, y }
-Body.setVelocity(ship.body, initialVelolcity)
+makeShip({ x: -20, y: 0, width: 10, height: 10, color: 'blue', label: 'ship' })
+makeShip({ x: 0, y: 0, width: 10, height: 10, color: 'blue', label: 'ship' })
 
 // fighter
-const chase = (body: Body): void => {
-  const direction = Vector.normalise(Vector.sub(ship.body.position, body.position))
-  const force = Vector.mult(direction, body.mass * 0.01 * state.dt)
-  Body.applyForce(body, body.position, force)
-}
-const fighter = makeDynamic({ x: -100, y: 10, width: 10, height: 10, color: 'red', label: 'fighter', action: chase })
+makeFighter({ x: -100, y: 10, width: 10, height: 10, color: 'red', label: 'fighter' })
+makeFighter({ x: -100, y: -300, width: 10, height: 10, color: 'red', label: 'fighter' })
 
 // meteor
 makeDynamic({ x: 0, y: 20, width: 10, height: 10, color: 'black' })
 
 // walls
-makeWall({ x: 850, y: 0, width: 100, height: 900 })
-makeWall({ x: -850, y: 0, width: 100, height: 900 })
-makeWall({ x: 0, y: -500, width: 1600, height: 100 })
-makeWall({ x: 0, y: 500, width: 1600, height: 100 })
+makeWall({ x: 850, y: 0, width: 100, height: 2000 })
+makeWall({ x: -850, y: 0, width: 100, height: 2000 })
+makeWall({ x: 0, y: -500, width: 2000, height: 100 })
+makeWall({ x: 0, y: 500, width: 2000, height: 100 })
 
 // add all of the bodies to the world
 Composite.add(engine.world, composites)
@@ -153,7 +193,7 @@ Runner.run(runner, engine)
 Events.on(engine, 'afterUpdate', e => {
   state.dt = engine.timing.lastDelta / 1000
   const G = 50
-  actors.forEach(actor => {
+  Object.values(actors).forEach(actor => {
     actor.action?.(actor.body)
   })
   dynamics.forEach(d => {
@@ -165,12 +205,15 @@ Events.on(engine, 'afterUpdate', e => {
       Body.applyForce(d, d.position, force)
     })
   })
-  if (state.run) {
-    const direction = Vector.normalise(Vector.sub(ship.body.position, fighter.body.position))
-    const force = Vector.mult(direction, 0.001)
-    Body.applyForce(ship.body, ship.body.position, force)
-    state.run = false
-  }
+  Object.values(ships).forEach(ship => {
+    if (ship.fighter != null) {
+      const direction = Vector.normalise(Vector.sub(ship.body.position, ship.fighter.body.position))
+      const force = Vector.mult(direction, 0.004)
+      Body.applyForce(ship.body, ship.body.position, force)
+      state.run = false
+      ship.fighter = undefined
+    }
+  })
 })
 
 Events.on(engine, 'collisionStart', e => {
@@ -183,7 +226,9 @@ Events.on(engine, 'collisionStart', e => {
       const labels = bodies.map(body => body.label)
       if (labels[0] === 'ship' && labels[1] === 'fighter') {
         console.log('collide')
-        state.run = true
+        const ship = ships[bodies[0].id]
+        const fighter = fighters[bodies[1].id]
+        ship.fighter = fighter
       }
     })
   })
