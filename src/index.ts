@@ -90,7 +90,7 @@ function makeFighter (props: {
     const dist = (a: Actor): number => Vector.magnitude(Vector.sub(a.body.position, body.position))
     const ship = Object.values(ships).reduce((a, b) => dist(a) < dist(b) ? a : b)
     const direction = Vector.normalise(Vector.sub(ship.body.position, body.position))
-    const force = Vector.mult(direction, body.mass * 0.01 * state.dt)
+    const force = Vector.mult(direction, body.mass * 0.03 * state.dt)
     Body.applyForce(body, body.position, force)
   }
   const actor = makeDynamic({ ...props, action: chase })
@@ -134,7 +134,7 @@ function makeDynamic ({ x, y, width, height, color = 'blue', label, action }: {
   const power = 0.01
   const initialVelolcity = { x: uniform(power, -power), y: uniform(power, -power) }
   Body.setVelocity(body, initialVelolcity)
-  statics.push(body)
+  dynamics.push(body)
   return makeActor({ body, action, color, label })
 }
 
@@ -149,7 +149,6 @@ function makeWall ({ x, y, width, height, color = 'purple', action }: {
   const body = Bodies.rectangle(x, y, width, height)
   body.render.fillStyle = color
   body.isStatic = true
-  statics.push(body)
   return makeActor({ body, action, color })
 }
 
@@ -170,7 +169,7 @@ makeFighter({ x: -100, y: 10, width: 10, height: 10, color: 'red', label: 'fight
 makeFighter({ x: -100, y: -300, width: 10, height: 10, color: 'red', label: 'fighter' })
 
 // meteor
-makeDynamic({ x: 0, y: 20, width: 10, height: 10, color: 'black' })
+makeDynamic({ x: 0, y: 0, width: 10, height: 10, color: 'black' })
 
 // walls
 makeWall({ x: 850, y: 0, width: 100, height: 2000 })
@@ -192,7 +191,7 @@ Runner.run(runner, engine)
 
 Events.on(engine, 'afterUpdate', e => {
   state.dt = engine.timing.lastDelta / 1000
-  const G = 50
+  const G = 20
   Object.values(actors).forEach(actor => {
     actor.action?.(actor.body)
   })
