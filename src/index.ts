@@ -36,10 +36,12 @@ interface Actor {
 
 interface Fighter extends Actor {
   ship?: Ship
+  force?: Vector
 }
 
 interface Ship extends Actor {
-  fighter?: Actor
+  fighter?: Fighter
+  force?: Vector
 }
 
 const composites: Body[] = []
@@ -85,15 +87,15 @@ function makeFighter (props: {
   color: string
   action?: Action
   label?: string
-}): Actor {
-  const chase = (body: Body): void => {
+}): Fighter {
+  const actor: Fighter = makeDynamic({ ...props })
+  actor.action = (body: Body): void => {
     const dist = (a: Actor): number => Vector.magnitude(Vector.sub(a.body.position, body.position))
     const ship = Object.values(ships).reduce((a, b) => dist(a) < dist(b) ? a : b)
     const direction = Vector.normalise(Vector.sub(ship.body.position, body.position))
-    const force = Vector.mult(direction, body.mass * 0.03 * state.dt)
-    Body.applyForce(body, body.position, force)
+    actor.force = Vector.mult(direction, body.mass * 0.02 * state.dt)
+    Body.applyForce(body, body.position, actor.force)
   }
-  const actor = makeDynamic({ ...props, action: chase })
   fighters[actor.body.id] = actor
   return actor
 }
@@ -107,14 +109,20 @@ function makeShip (props: {
   action?: Action
   label?: string
 }): Ship {
-  const wander = (body: Body): void => {
-    if (uniform(0, 1) < state.dt) {
-      const direction = getRandDir()
-      const force = Vector.mult(direction, 0.001)
-      Body.applyForce(body, body.position, force)
-    }
+  const actor: Ship = makeDynamic({ ...props })
+  actor.action = (body: Body): void => {
+    const dist = (a: Actor): number => Vector.magnitude(Vector.sub(a.body.position, body.position))
+    const forces = Object.values(fighters).map(fighter => {
+      const direction = Vector.normalise(Vector.sub(body.position, fighter.body.position))
+      return Vector.div(direction, dist(fighter))
+    })
+    const sumForces = forces.reduce((a, b) => Vector.add(a, b))
+    const direction = Vector.normalise(sumForces)
+    const toCenter = Vector.normalise(Vector.neg(body.position))
+    const direction2 = Vector.add(Vector.mult(direction, 0.5), Vector.mult(toCenter, 0.5))
+    actor.force = Vector.mult(direction2, body.mass * 0.02 * state.dt)
+    Body.applyForce(body, body.position, actor.force)
   }
-  const actor = makeDynamic({ ...props, action: wander })
   ships[actor.body.id] = actor
   return actor
 }
@@ -191,7 +199,7 @@ Runner.run(runner, engine)
 
 Events.on(engine, 'afterUpdate', e => {
   state.dt = engine.timing.lastDelta / 1000
-  const G = 20
+  const G = 10
   Object.values(actors).forEach(actor => {
     actor.action?.(actor.body)
   })
@@ -240,4 +248,27 @@ Events.on(render, 'beforeRender', e => {
   render.bounds.min.y = -450
   // @ts-expect-error
   Render.startViewTransform(render)
+})
+
+window.onmousedown = (e: MouseEvent) => {
+  console.log(`mousePos = (${e.x},${e.y})`)
+}
+
+Events.on(render, 'afterRender', e => {
+  Object.values(ships).forEach(ship => {
+    if (ship.force != null) {
+      render.context.strokeStyle = 'blue'
+      render.context.lineWidth = 1
+      render.context.beginPath()
+      const start = { x: ship.body.position.x, y: ship.body.position.y }
+      const end = {
+        x: start.x + ship.force.x * 5000000,
+        y: start.y + ship.force.y * 5000000
+      }
+      console.log(Vector.magnitude(Vector.sub(end, start)))
+      render.context.moveTo(start.x, start.y)
+      render.context.lineTo(end.x, end.y)
+      render.context.stroke()
+    }
+  })
 })
