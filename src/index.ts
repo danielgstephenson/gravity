@@ -3,9 +3,9 @@ import Matter, { Engine, Render, Bodies, Body, Composite, Runner, Events, Vector
 const canvas = document.getElementById('canvas') as HTMLCanvasElement | undefined
 
 /* TO DO
-Don't use Composite.allBodies anywhere
-Use generics to allow action functions to take different types
 Use map instead of dictionaries or arrays
+Use generics to allow action functions to take different types
+Don't use Composite.allBodies anywhere
 */
 
 // create a state
@@ -56,13 +56,13 @@ interface Planet extends Actor {
 }
 
 const composites: Composite[] = []
-const dynamics: Body[] = []
-const statics: Body[] = []
-const fighters: Record<string, Fighter> = {}
-const ships: Record<string, Ship> = {}
-const planets: Record<string, Planet> = {}
-const towers: Record<string, Tower> = {}
-const actors: Record<string, Actor> = {}
+const dynamics = new Map<number, Body>()
+const statics = new Map<number, Body>()
+const fighters = new Map<number, Fighter>()
+const ships = new Map<number, Ship>()
+const planets = new Map<number, Planet>()
+const towers = new Map<number, Tower>()
+const actors = new Map<number, Actor>()
 
 function makeActor ({ body, bodies, action, label }: {
   body: Body
@@ -79,7 +79,7 @@ function makeActor ({ body, bodies, action, label }: {
   }
   composites.push(composite)
   const actor: Actor = { composite, body, action }
-  actors[body.id] = actor
+  actors.set(body.id, actor)
   return actor
 }
 
@@ -96,7 +96,7 @@ function makeDynamic ({ x, y, width, height, color = 'blue', label, action }: {
   body.isStatic = false
   body.frictionAir = 0
   body.render.fillStyle = color
-  dynamics.push(body)
+  dynamics.set(body.id, body)
   return makeActor({ body, action, label })
 }
 
@@ -111,12 +111,12 @@ function makeFighter (props: {
   const actor: Fighter = makeDynamic({ ...props, label: 'fighter' })
   actor.action = (actor: Actor): void => {
     const dist = (a: Actor): number => Vector.magnitude(Vector.sub(a.body.position, actor.body.position))
-    const ship = Object.values(ships).reduce((a, b) => dist(a) < dist(b) ? a : b)
+    const ship = [...ships.values()].reduce((a, b) => dist(a) < dist(b) ? a : b)
     const direction = Vector.normalise(Vector.sub(ship.body.position, actor.body.position))
     const force = Vector.mult(direction, actor.body.mass * 0.02 * state.dt)
     Body.applyForce(actor.body, actor.body.position, force)
   }
-  fighters[actor.body.id] = actor
+  fighters.set(actor.body.id, actor)
   return actor
 }
 
@@ -131,7 +131,7 @@ function makeShip (props: {
   const actor: Ship = makeDynamic({ ...props, label: 'ship' })
   actor.action = (actor: Actor): void => {
     const dist = (a: Actor): number => Vector.magnitude(Vector.sub(a.body.position, actor.body.position))
-    const forces = Object.values(fighters).map(fighter => {
+    const forces = [...fighters.values()].map(fighter => {
       const direction = Vector.normalise(Vector.sub(actor.body.position, fighter.body.position))
       return Vector.div(direction, dist(fighter))
     })
@@ -142,7 +142,7 @@ function makeShip (props: {
     const force = Vector.mult(direction2, actor.body.mass * 0.02 * state.dt)
     Body.applyForce(actor.body, actor.body.position, force)
   }
-  ships[actor.body.id] = actor
+  ships.set(actor.body.id, actor)
   return actor
 }
 
@@ -155,13 +155,13 @@ function makePlanet ({ x, y, radius, color }: {
   const body = Bodies.circle(x, y, radius)
   body.isStatic = true
   body.render.fillStyle = color
-  statics.push(body)
+  statics.set(body.id, body)
   const actor = makeActor({ body, label: 'planet' })
   actor.action = () => {
     Composite.rotate(actor.composite, 0.01, actor.body.position)
   }
   const planet = { ...actor, towers: [] }
-  planets[body.id] = planet
+  planets.set(body.id, planet)
   return planet
 }
 
@@ -200,10 +200,10 @@ function makeTower ({ planet }: {
       }
       collisions.map(x => x.bodyA).forEach(body => {
         if (!tower.charging && body.label === 'fighter') {
-          const composite = fighters[body.id].composite
-          delete actors[body.id]
-          delete fighters[body.id]
-          Matter.Composite.remove(engine.world, composite)
+          const composite = fighters.get(body.id)?.composite
+          actors.delete(body.id)
+          fighters.delete(body.id)
+          if (composite != null) Matter.Composite.remove(engine.world, composite)
         }
       })
     }
@@ -211,7 +211,7 @@ function makeTower ({ planet }: {
     actor.firing = false
     actor.charging = false
     Composite.add(planet.composite, actor.body)
-    towers[body.id] = actor
+    towers.set(body.id, actor)
     return actor
   }
   throw new Error('planet.body.circleRadius is undefined')
@@ -273,7 +273,7 @@ Runner.run(runner, engine)
 Events.on(engine, 'afterUpdate', e => {
   state.dt = engine.timing.lastDelta / 1000
   const G = 10
-  Object.values(actors).forEach(actor => {
+  actors.forEach(actor => {
     actor.action?.(actor)
   })
   dynamics.forEach(d => {
@@ -285,7 +285,7 @@ Events.on(engine, 'afterUpdate', e => {
       Body.applyForce(d, d.position, force)
     })
   })
-  Object.values(ships).forEach(ship => {
+  ships.forEach(ship => {
     if (ship.fighter != null) {
       const direction = Vector.normalise(Vector.sub(ship.body.position, ship.fighter.body.position))
       const force = Vector.mult(direction, 0.004)
@@ -302,12 +302,12 @@ Events.on(engine, 'collisionStart', e => {
       [pair.bodyA, pair.bodyB],
       [pair.bodyB, pair.bodyA]
     ]
-    orderings.forEach(bodies => {
-      const labels = bodies.map(body => body.label)
+    orderings.forEach(ordering => {
+      const labels = ordering.map(body => body.label)
       if (labels[0] === 'ship' && labels[1] === 'fighter') {
-        const ship = ships[bodies[0].id]
-        const fighter = fighters[bodies[1].id]
-        ship.fighter = fighter
+        const ship = ships.get(ordering[0].id)
+        const fighter = fighters.get(ordering[1].id)
+        if (ship != null) ship.fighter = fighter
       }
     })
   })
@@ -327,7 +327,7 @@ window.onmousedown = (e: MouseEvent) => {
 }
 
 Events.on(render, 'afterRender', e => {
-  Object.values(towers).forEach(tower => {
+  towers.forEach(tower => {
     render.context.strokeStyle = tower.charging ? 'blue' : tower.firing ? 'red' : 'green'
     render.context.lineWidth = 1
     render.context.beginPath()
@@ -340,23 +340,4 @@ Events.on(render, 'afterRender', e => {
     render.context.lineTo(end.x, end.y)
     render.context.stroke()
   })
-
-  /*
-  Object.values(ships).forEach(ship => {
-    if (ship.force != null) {
-      render.context.strokeStyle = 'blue'
-      render.context.lineWidth = 1
-      render.context.beginPath()
-      const start = { x: ship.body.position.x, y: ship.body.position.y }
-      const end = {
-        x: start.x + ship.force.x * 5000000,
-        y: start.y + ship.force.y * 5000000
-      }
-      console.log(Vector.magnitude(Vector.sub(end, start)))
-      render.context.moveTo(start.x, start.y)
-      render.context.lineTo(end.x, end.y)
-      render.context.stroke()
-    }
-  })
-  */
 })
